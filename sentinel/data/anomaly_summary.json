@@ -1,0 +1,40 @@
+{
+  "total_flagged": 86,
+  "by_type": {
+    "FEEDER_LOSS": 79,
+    "THEFT": 6,
+    "PEER_DEVIATION": 1
+  },
+  "false_positive_rate": 0.0,
+  "overall_precision": 1.0,
+  "overall_recall": 0.5058823529411764,
+  "overall_f1": 0.671875,
+  "per_type": {
+    "THEFT": {
+      "precision": 1.0,
+      "recall": 0.4,
+      "f1": 0.5714285714285714
+    },
+    "TAMPERING": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "PEER_DEVIATION": {
+      "precision": 1.0,
+      "recall": 0.125,
+      "f1": 0.2222222222222222
+    },
+    "FEEDER_LOSS": {
+      "precision": 0.8607594936708861,
+      "recall": 0.49635036496350365,
+      "f1": 0.6296296296296297
+    }
+  },
+  "confusion_matrix": {
+    "tn": 330,
+    "fp": 0,
+    "fn": 84,
+    "tp": 86
+  }
+}

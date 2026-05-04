@@ -1,0 +1,46 @@
+{
+  "theft_meters": [
+    "MET_302",
+    "MET_343",
+    "MET_140",
+    "MET_169",
+    "MET_030",
+    "MET_003",
+    "MET_074",
+    "MET_487",
+    "MET_240",
+    "MET_288",
+    "MET_149",
+    "MET_044",
+    "MET_004",
+    "MET_477",
+    "MET_350"
+  ],
+  "tamper_meters": [
+    "MET_071",
+    "MET_226",
+    "MET_059",
+    "MET_267",
+    "MET_395",
+    "MET_048",
+    "MET_228",
+    "MET_355",
+    "MET_215",
+    "MET_212"
+  ],
+  "peer_meters": [
+    "MET_093",
+    "MET_480",
+    "MET_420",
+    "MET_131",
+    "MET_276",
+    "MET_092",
+    "MET_303",
+    "MET_316"
+  ],
+  "feeder_loss_feeders": [
+    "F01",
+    "F02",
+    "F03"
+  ]
+}
