@@ -1,5 +1,25 @@
-# Ignore any cached Python lock files or configs that might trigger unwanted uv syncs
+# Ignore Python artifacts
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Ignore local lock files that might conflict with Vercel's automated uv/pipenv detection
 pyproject.toml
 uv.lock
 Pipfile
 Pipfile.lock
+poetry.lock
+
+# Ignore notebooks and extra docs
+notebooks/
+instructions.md
+tracked_files.txt
+data/meter_readings.csv
+data/feeder_readings.csv
+data/forecast_results.csv
