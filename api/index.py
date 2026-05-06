@@ -19,7 +19,7 @@ app = FastAPI(title="SENTINEL API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -28,27 +28,33 @@ app.add_middleware(
 STATE: Dict[str, Any] = {}
 
 
+def _load_csv(filename: str, **kwargs) -> pd.DataFrame:
+    """Load a CSV, trying the primary file first, then a _sample fallback."""
+    primary = os.path.join(DATA, filename)
+    if os.path.exists(primary):
+        return pd.read_csv(primary, **kwargs)
+    sample = os.path.join(DATA, filename.replace(".csv", "_sample.csv"))
+    if os.path.exists(sample):
+        return pd.read_csv(sample, **kwargs)
+    # Last resort: return empty DataFrame so the app doesn't crash
+    return pd.DataFrame()
+
+
 @app.on_event("startup")
 def load_data() -> None:
-    def get_path(filename: str) -> str:
-        primary = os.path.join(DATA, filename)
-        if os.path.exists(primary):
-            return primary
-        # Fallback for deployment environments where large CSVs are ignored
-        sample = os.path.join(DATA, filename.replace(".csv", "_sample.csv"))
-        if os.path.exists(sample):
-            return sample
-        return primary # Will likely raise error on read, but it's the best we can do
-
-    STATE["meter_readings"] = pd.read_csv(get_path("meter_readings.csv"), parse_dates=["timestamp"])
-    STATE["meter_metadata"] = pd.read_csv(os.path.join(DATA, "meter_metadata.csv"))
-    STATE["feeder_readings"] = pd.read_csv(get_path("feeder_readings.csv"), parse_dates=["timestamp"])
-    STATE["forecast_results"] = pd.read_csv(get_path("forecast_results.csv"), parse_dates=["timestamp"])
-    STATE["forecast_next24h"] = pd.read_csv(os.path.join(DATA, "forecast_next24h.csv"))
-    STATE["forecast_metrics"] = pd.read_csv(os.path.join(DATA, "forecast_metrics.csv"))
-    STATE["anomaly_results"] = pd.read_csv(os.path.join(DATA, "anomaly_results.csv"))
-    with open(os.path.join(DATA, "anomaly_summary.json"), "r", encoding="utf-8") as f:
-        STATE["anomaly_summary"] = json.load(f)
+    STATE["meter_readings"] = _load_csv("meter_readings.csv", parse_dates=["timestamp"])
+    STATE["meter_metadata"] = _load_csv("meter_metadata.csv")
+    STATE["feeder_readings"] = _load_csv("feeder_readings.csv", parse_dates=["timestamp"])
+    STATE["forecast_results"] = _load_csv("forecast_results.csv", parse_dates=["timestamp"])
+    STATE["forecast_next24h"] = _load_csv("forecast_next24h.csv")
+    STATE["forecast_metrics"] = _load_csv("forecast_metrics.csv")
+    STATE["anomaly_results"] = _load_csv("anomaly_results.csv")
+    summary_path = os.path.join(DATA, "anomaly_summary.json")
+    if os.path.exists(summary_path):
+        with open(summary_path, "r", encoding="utf-8") as f:
+            STATE["anomaly_summary"] = json.load(f)
+    else:
+        STATE["anomaly_summary"] = {}
     STATE["last_updated"] = datetime.now(timezone.utc).isoformat()
 
 
@@ -69,6 +75,8 @@ def anomalies(
     feeder_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     df = STATE["anomaly_results"].copy()
+    if df.empty:
+        return []
     df = df[df["flag_status"] == "FLAGGED"]
     if locality:
         df = df[df["locality"].str.lower() == locality.lower()]
@@ -84,20 +92,26 @@ def anomalies(
 @app.get("/api/anomaly-summary")
 def anomaly_summary() -> Dict[str, Any]:
     summ = dict(STATE["anomaly_summary"])
-    top = (
-        STATE["anomaly_results"]
-        .query("flag_status == 'FLAGGED'")
-        .sort_values("confidence_score", ascending=False)
-        .head(5)
-        .to_dict(orient="records")
-    )
-    summ["top_flagged_meters"] = top
+    ar = STATE["anomaly_results"]
+    if not ar.empty:
+        top = (
+            ar
+            .query("flag_status == 'FLAGGED'")
+            .sort_values("confidence_score", ascending=False)
+            .head(5)
+            .to_dict(orient="records")
+        )
+        summ["top_flagged_meters"] = top
+    else:
+        summ["top_flagged_meters"] = []
     return summ
 
 
 @app.get("/api/forecast/zones")
 def forecast_zones() -> List[Dict[str, Any]]:
     df = STATE["forecast_next24h"].copy()
+    if df.empty:
+        return []
     risk_rank = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
 
     def max_risk(series: pd.Series) -> str:
@@ -107,18 +121,22 @@ def forecast_zones() -> List[Dict[str, Any]]:
     for loc, g in df.groupby("locality"):
         peak_hour = int(g.loc[g["predicted_kwh"].idxmax(), "hour"])
         mx = max_risk(g["risk_level"])
+        ar = STATE["anomaly_results"]
+        flagged_count = 0
+        if not ar.empty:
+            flagged_count = int(
+                ar[
+                    (ar["locality"] == loc)
+                    & (ar["flag_status"] == "FLAGGED")
+                ]["meter_id"].nunique()
+            )
         rows.append(
             {
                 "locality": loc,
                 "peak_hour": peak_hour,
                 "max_risk_level": mx,
                 "avg_predicted_kwh": float(g["predicted_kwh"].mean()),
-                "flagged_meter_count": int(
-                    STATE["anomaly_results"][
-                        (STATE["anomaly_results"]["locality"] == loc)
-                        & (STATE["anomaly_results"]["flag_status"] == "FLAGGED")
-                    ]["meter_id"].nunique()
-                ),
+                "flagged_meter_count": flagged_count,
             }
         )
     return rows
@@ -159,11 +177,16 @@ def forecast_heatmap() -> List[Dict[str, Any]]:
 def forecast_overview_24h() -> Dict[str, Any]:
     """Aggregated next-window forecast vs historical baseline for dashboard chart."""
     n24 = STATE["forecast_next24h"].copy()
+    if n24.empty:
+        return {"hours": [], "forecast_kwh": [], "baseline_kwh": [], "capacity_reference_kwh": []}
     agg = n24.groupby("hour", as_index=False)["predicted_kwh"].sum().sort_values("hour")
     fr = STATE["forecast_results"].copy()
-    fr["hour"] = pd.to_datetime(fr["timestamp"], utc=True, errors="coerce").dt.hour
-    base_by_h = fr.groupby("hour")["baseline_kwh"].mean()
-    baseline = [float(base_by_h.get(h, base_by_h.mean())) for h in agg["hour"]]
+    if not fr.empty:
+        fr["hour"] = pd.to_datetime(fr["timestamp"], utc=True, errors="coerce").dt.hour
+        base_by_h = fr.groupby("hour")["baseline_kwh"].mean()
+        baseline = [float(base_by_h.get(h, base_by_h.mean())) for h in agg["hour"]]
+    else:
+        baseline = [0.0] * len(agg)
     cap_line = [float(agg["predicted_kwh"].max() * 1.05)] * len(agg)
     return {
         "hours": agg["hour"].astype(int).tolist(),
@@ -176,19 +199,25 @@ def forecast_overview_24h() -> Dict[str, Any]:
 @app.get("/api/meters/{meter_id}")
 def meter_detail(meter_id: str) -> Dict[str, Any]:
     meta = STATE["meter_metadata"]
+    if meta.empty:
+        raise HTTPException(status_code=404, detail="Unknown meter")
     row = meta[meta["meter_id"] == meter_id]
     if row.empty:
         raise HTTPException(status_code=404, detail="Unknown meter")
-    an = STATE["anomaly_results"][STATE["anomaly_results"]["meter_id"] == meter_id]
-    mr = STATE["meter_readings"][STATE["meter_readings"]["meter_id"] == meter_id].sort_values("timestamp")
-    tmax = mr["timestamp"].max()
-    last7 = mr[mr["timestamp"] >= (tmax - pd.Timedelta(days=7))]
+    an = STATE["anomaly_results"]
+    an_row = an[an["meter_id"] == meter_id] if not an.empty else pd.DataFrame()
+    mr = STATE["meter_readings"]
+    if not mr.empty:
+        mr = mr[mr["meter_id"] == meter_id].sort_values("timestamp")
+        tmax = mr["timestamp"].max()
+        last7 = mr[mr["timestamp"] >= (tmax - pd.Timedelta(days=7))]
+        readings = last7[["timestamp", "consumption_kwh", "is_anomaly", "anomaly_type"]].to_dict(orient="records")
+    else:
+        readings = []
     return {
         "metadata": row.iloc[0].to_dict(),
-        "readings_last_7d": last7[["timestamp", "consumption_kwh", "is_anomaly", "anomaly_type"]].to_dict(
-            orient="records"
-        ),
-        "anomaly": an.iloc[0].to_dict() if len(an) else {},
+        "readings_last_7d": readings,
+        "anomaly": an_row.iloc[0].to_dict() if len(an_row) else {},
     }
 
 
@@ -221,13 +250,21 @@ def inspection_report(meter_id: str) -> Dict[str, Any]:
 def dashboard_summary() -> Dict[str, Any]:
     meta = STATE["meter_metadata"]
     an = STATE["anomaly_results"]
-    flagged = an[an["flag_status"] == "FLAGGED"]
+    if meta.empty:
+        return {
+            "total_meters": 0, "flagged_count": 0, "critical_zones": [],
+            "high_risk_feeders": [], "detection_accuracy": {}, "last_updated": _ts(),
+        }
+    flagged = an[an["flag_status"] == "FLAGGED"] if not an.empty else pd.DataFrame()
     zones = forecast_zones()
     critical_zones = [z for z in zones if z["max_risk_level"] in ("HIGH", "CRITICAL")]
-    feeders = STATE["forecast_next24h"].groupby("feeder_id")["risk_level"].apply(lambda s: s.mode().iloc[0]).reset_index()
-    risk_rank = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
-    feeders["rk"] = feeders["risk_level"].map(risk_rank)
-    high_feeders = feeders[feeders["rk"] >= 2].sort_values("rk", ascending=False)["feeder_id"].tolist()
+    n24 = STATE["forecast_next24h"]
+    high_feeders = []
+    if not n24.empty:
+        feeders = n24.groupby("feeder_id")["risk_level"].apply(lambda s: s.mode().iloc[0]).reset_index()
+        risk_rank = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
+        feeders["rk"] = feeders["risk_level"].map(risk_rank)
+        high_feeders = feeders[feeders["rk"] >= 2].sort_values("rk", ascending=False)["feeder_id"].tolist()
     f1 = float(STATE["anomaly_summary"].get("overall_f1", 0))
     return {
         "total_meters": int(meta["meter_id"].nunique()),

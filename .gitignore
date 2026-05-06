@@ -18,14 +18,14 @@ env/
 *.egg-info/
 .pytest_cache/
 
-# Data & Models (Large Files)
-*.csv
-!*_sample.csv
-*.parquet
+# Large data files only (keep small CSVs)
+data/meter_readings.csv
+data/feeder_readings.csv
+data/forecast_results.csv
 *.pkl
 *.h5
 *.joblib
-data/meter_readings.csv
+*.parquet
 
 # OS & IDE
 .DS_Store
