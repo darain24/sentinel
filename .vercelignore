@@ -1,0 +1,5 @@
+# Ignore any cached Python lock files or configs that might trigger unwanted uv syncs
+pyproject.toml
+uv.lock
+Pipfile
+Pipfile.lock
