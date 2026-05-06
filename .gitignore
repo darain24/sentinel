@@ -20,6 +20,7 @@ env/
 
 # Data & Models (Large Files)
 *.csv
+!*_sample.csv
 *.parquet
 *.pkl
 *.h5

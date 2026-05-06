@@ -30,10 +30,20 @@ STATE: Dict[str, Any] = {}
 
 @app.on_event("startup")
 def load_data() -> None:
-    STATE["meter_readings"] = pd.read_csv(os.path.join(DATA, "meter_readings.csv"), parse_dates=["timestamp"])
+    def get_path(filename: str) -> str:
+        primary = os.path.join(DATA, filename)
+        if os.path.exists(primary):
+            return primary
+        # Fallback for deployment environments where large CSVs are ignored
+        sample = os.path.join(DATA, filename.replace(".csv", "_sample.csv"))
+        if os.path.exists(sample):
+            return sample
+        return primary # Will likely raise error on read, but it's the best we can do
+
+    STATE["meter_readings"] = pd.read_csv(get_path("meter_readings.csv"), parse_dates=["timestamp"])
     STATE["meter_metadata"] = pd.read_csv(os.path.join(DATA, "meter_metadata.csv"))
-    STATE["feeder_readings"] = pd.read_csv(os.path.join(DATA, "feeder_readings.csv"), parse_dates=["timestamp"])
-    STATE["forecast_results"] = pd.read_csv(os.path.join(DATA, "forecast_results.csv"), parse_dates=["timestamp"])
+    STATE["feeder_readings"] = pd.read_csv(get_path("feeder_readings.csv"), parse_dates=["timestamp"])
+    STATE["forecast_results"] = pd.read_csv(get_path("forecast_results.csv"), parse_dates=["timestamp"])
     STATE["forecast_next24h"] = pd.read_csv(os.path.join(DATA, "forecast_next24h.csv"))
     STATE["forecast_metrics"] = pd.read_csv(os.path.join(DATA, "forecast_metrics.csv"))
     STATE["anomaly_results"] = pd.read_csv(os.path.join(DATA, "anomaly_results.csv"))
