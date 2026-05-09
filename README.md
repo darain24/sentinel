@@ -21,19 +21,9 @@
 
 ---
 
-<!-- ============================================================ -->
-<!-- PRESENTATION & DEMO LINKS — Replace # with actual URLs       -->
-<!-- ============================================================ -->
-
 <p align="center">
-  <!-- TODO: Replace with your actual PPT link -->
-  <a href="#"><img src="https://img.shields.io/badge/Presentation-PPT-B7472A?style=for-the-badge&logo=microsoft-powerpoint&logoColor=white" alt="PPT Link"/></a>
-  &nbsp;&nbsp;
-  <!-- TODO: Replace with your actual video walkthrough link -->
-  <a href="#"><img src="https://img.shields.io/badge/Video-Walkthrough-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Video Link"/></a>
-  &nbsp;&nbsp;
   <!-- TODO: Replace with your actual deployed URL -->
-  <a href="#"><img src="https://img.shields.io/badge/Live-Demo-00C853?style=for-the-badge&logo=vercel&logoColor=white" alt="Live Demo"/></a>
+  <a href="https://sentinel-ochre-one.vercel.app/"><img src="https://img.shields.io/badge/Live-Demo-00C853?style=for-the-badge&logo=vercel&logoColor=white" alt="Live Demo"/></a>
 </p>
 
 ---
